@@ -1,0 +1,197 @@
+package agent
+
+import (
+	"errors"
+	"os"
+	"path"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/intelsdi-x/snap-plugin-lib-go/v1/plugin"
+	logging "github.com/op/go-logging"
+)
+
+var log = logging.MustGetLogger("processor")
+var logFormatter = logging.MustStringFormatter(
+	` %{level:.1s}%{time:0102 15:04:05.999999} %{pid} %{shortfile}] %{message}`,
+)
+
+type FileLog struct {
+	Name    string
+	Logger  *logging.Logger
+	LogFile *os.File
+}
+
+type PreviousData struct {
+	Data   float64
+	Create time.Time
+}
+
+// Processor test processor
+type SnapProcessor struct {
+	Cache map[string]PreviousData
+}
+
+// NewProcessor generate processor
+func NewProcessor() plugin.Processor {
+	return &SnapProcessor{
+		Cache: make(map[string]PreviousData),
+	}
+}
+
+func NewLogger(filesPath string, name string) (*FileLog, error) {
+	logDirPath := path.Join(filesPath, "log")
+	if _, err := os.Stat(logDirPath); os.IsNotExist(err) {
+		os.Mkdir(logDirPath, 0777)
+	}
+
+	logFilePath := path.Join(logDirPath, name+".log")
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		return nil, errors.New("Unable to create log file:" + err.Error())
+	}
+
+	fileLog := logging.NewLogBackend(logFile, "["+name+"]", 0)
+	fileLogLevel := logging.AddModuleLevel(fileLog)
+	fileLogLevel.SetLevel(logging.INFO, "")
+	fileLogBackend := logging.NewBackendFormatter(fileLog, logFormatter)
+
+	log.SetBackend(logging.SetBackend(fileLogBackend))
+
+	return &FileLog{
+		Name:    name,
+		Logger:  log,
+		LogFile: logFile,
+	}, nil
+}
+
+// Process test process function
+func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugin.Metric, error) {
+	processLog, err := NewLogger("/tmp", "processor")
+	if err != nil {
+		return mts, errors.New("Error creating process logger: " + err.Error())
+	}
+	defer processLog.LogFile.Close()
+
+	log := processLog.Logger
+	log.Infof("Process received metric size: %d", len(mts))
+
+	namespacesConfig, err := cfg.GetString("namespaces")
+	if err != nil {
+		return mts, errors.New("Unable to read namespaces config: " + err.Error())
+	}
+	processNamespaces := strings.Split(namespacesConfig, ",")
+	processNamespaces = append(processNamespaces, "")
+	log.Infof("Process namespaces: %+v", processNamespaces)
+
+	filterMetricKeywordsConfig, err := cfg.GetString("filterMetricKeywords")
+	if err != nil {
+		return mts, errors.New("Unable to read filterMetricKeywords config: " + err.Error())
+	}
+	filterMetricKeywords := strings.Split(filterMetricKeywordsConfig, ",")
+	log.Infof("Process filterMetricKeywords: %+v", filterMetricKeywords)
+
+	metrics := []plugin.Metric{}
+	for _, mt := range mts {
+		podNamespace, _ := mt.Tags["io.kubernetes.pod.namespace"]
+		if inArray(podNamespace, processNamespaces) {
+			dataRate := p.caluDataRate(mt, filterMetricKeywords, log)
+			newTags := map[string]string{}
+			newTags["dataRate"] = dataRate
+			newTags["io.kubernetes.container.name"] = mt.Tags["io.kubernetes.container.name"]
+			newTags["nodename"] = mt.Tags["nodename"]
+			newTags["deploymentId"] = mt.Tags["deploymentId"]
+			mt.Tags = newTags
+			metrics = append(metrics, mt)
+		}
+	}
+
+	log.Infof("Process filter metric size %d: ", len(metrics))
+	log.Infof("Process filter metric %+v: ", metrics)
+	return metrics, nil
+}
+
+/*
+	GetConfigPolicy() returns the configPolicy for your plugin.
+
+	A config policy is how users can provide configuration info to
+	plugin. Here you define what sorts of config info your plugin
+	needs and/or requires.
+*/
+func (p *SnapProcessor) GetConfigPolicy() (plugin.ConfigPolicy, error) {
+	policy := plugin.NewConfigPolicy()
+	return *policy, nil
+}
+
+func (p *SnapProcessor) caluDataRate(
+	mt plugin.Metric,
+	filterMetricKeywords []string,
+	log *logging.Logger) string {
+	namespaces := mt.Namespace.Strings()
+	mapKey := strings.Join(namespaces, "/")
+	dataRate := ""
+	previousData, ok := p.Cache[mapKey]
+	if ok {
+		log.Infof("Find %s previous cache metric vaule: %+v", mapKey, previousData)
+		diffSeconds := mt.Timestamp.Sub(previousData.Create).Seconds()
+		diffValue := (convertInterface(mt.Data) - previousData.Data)
+		if diffSeconds > 0 && diffValue > 0 {
+			rateData := (convertInterface(mt.Data) - previousData.Data) / diffSeconds
+			dataRate = strconv.FormatFloat(rateData, 'f', -1, 64)
+			log.Infof("Calculate %s dataRate %s on %s", mapKey, dataRate, mt.Timestamp)
+		}
+	}
+
+	// filter do not need counter metric
+	caluMetric := namespaces[len(namespaces)-1]
+	filterCache := false
+	for _, metricKeyword := range filterMetricKeywords {
+		if strings.Contains(caluMetric, metricKeyword) {
+			filterCache = true
+			break
+		}
+	}
+
+	if !filterCache {
+		p.Cache[mapKey] = PreviousData{
+			Data:   convertInterface(mt.Data),
+			Create: mt.Timestamp,
+		}
+		log.Infof("Cache this time metric vaule: %+v", p.Cache[mapKey])
+	}
+
+	return dataRate
+}
+
+func convertInterface(data interface{}) float64 {
+	switch data.(type) {
+	case int:
+		return float64(data.(int))
+	case int8:
+		return float64(data.(int8))
+	case int16:
+		return float64(data.(int16))
+	case int32:
+		return float64(data.(int32))
+	case int64:
+		return float64(data.(int64))
+	case uint64:
+		return float64(data.(uint64))
+	case float32:
+		return float64(data.(float32))
+	case float64:
+		return float64(data.(float64))
+	default:
+		return float64(0)
+	}
+}
+
+func inArray(a string, list []string) bool {
+	for _, b := range list {
+		if b == a {
+			return true
+		}
+	}
+	return false
+}
