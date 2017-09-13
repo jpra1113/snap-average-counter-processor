@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -96,13 +95,11 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 	for _, mt := range mts {
 		podNamespace, _ := mt.Tags["io.kubernetes.pod.namespace"]
 		if inArray(podNamespace, processNamespaces) {
-			dataRate := p.caluDataRate(mt, filterMetricKeywords, log)
-			newTags := map[string]string{}
-			newTags["dataRate"] = dataRate
-			newTags["io.kubernetes.container.name"] = mt.Tags["io.kubernetes.container.name"]
-			newTags["nodename"] = mt.Tags["nodename"]
-			newTags["deploymentId"] = mt.Tags["deploymentId"]
-			mt.Tags = newTags
+			averageData := p.caluAverageData(mt, filterMetricKeywords, log)
+			if averageData != -1 {
+				mt.Data = averageData
+				mt.Tags["processed"] = "true"
+			}
 			metrics = append(metrics, mt)
 		}
 	}
@@ -124,22 +121,21 @@ func (p *SnapProcessor) GetConfigPolicy() (plugin.ConfigPolicy, error) {
 	return *policy, nil
 }
 
-func (p *SnapProcessor) caluDataRate(
+func (p *SnapProcessor) caluAverageData(
 	mt plugin.Metric,
 	filterMetricKeywords []string,
-	log *logging.Logger) string {
+	log *logging.Logger) float64 {
 	namespaces := mt.Namespace.Strings()
 	mapKey := strings.Join(namespaces, "/")
-	dataRate := ""
+	averageData := float64(-1)
 	previousData, ok := p.Cache[mapKey]
 	if ok {
 		log.Infof("Find %s previous cache metric vaule: %+v", mapKey, previousData)
 		diffSeconds := mt.Timestamp.Sub(previousData.Create).Seconds()
 		diffValue := (convertInterface(mt.Data) - previousData.Data)
 		if diffSeconds > 0 && diffValue > 0 {
-			rateData := (convertInterface(mt.Data) - previousData.Data) / diffSeconds
-			dataRate = strconv.FormatFloat(rateData, 'f', -1, 64)
-			log.Infof("Calculate %s dataRate %s on %s", mapKey, dataRate, mt.Timestamp)
+			averageData = (convertInterface(mt.Data) - previousData.Data) / diffSeconds
+			log.Infof("Calculate %s averageData(%f) on %s", mapKey, averageData, mt.Timestamp)
 		}
 	}
 
@@ -161,7 +157,7 @@ func (p *SnapProcessor) caluDataRate(
 		log.Infof("Cache this time metric vaule: %+v", p.Cache[mapKey])
 	}
 
-	return dataRate
+	return averageData
 }
 
 func convertInterface(data interface{}) float64 {
