@@ -30,6 +30,7 @@ type PreviousData struct {
 // Processor test processor
 type SnapProcessor struct {
 	Cache map[string]PreviousData
+	Log   *FileLog
 }
 
 // NewProcessor generate processor
@@ -67,13 +68,15 @@ func NewLogger(filesPath string, name string) (*FileLog, error) {
 
 // Process test process function
 func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugin.Metric, error) {
-	processLog, err := NewLogger("/tmp", "processor")
-	if err != nil {
-		return mts, errors.New("Error creating process logger: " + err.Error())
+	if p.Log == nil {
+		processLog, err := NewLogger("/tmp", "processor")
+		if err != nil {
+			return mts, errors.New("Error creating process logger: " + err.Error())
+		}
+		p.Log = processLog
 	}
-	defer processLog.LogFile.Close()
 
-	log := processLog.Logger
+	log := p.Log.Logger
 	log.Infof("Process received metric size: %d", len(mts))
 
 	namespacesConfig, err := cfg.GetString("namespaces")
