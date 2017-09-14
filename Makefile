@@ -15,7 +15,7 @@ help:
 	@echo 'Usage:'
 	@echo '    make build           Compile the project.'
 	@echo '    make get-deps        runs glide install, mostly used for ci.'
-	
+
 	@echo '    make clean           Clean the directory tree.'
 	@echo
 
@@ -37,5 +37,14 @@ clean:
 
 test:
 	go test $(glide nv)
+
+build-test-image: build-linux
+	docker build -t average-counter-processor .
+
+run-si-test: build-test-image clean-up-si-test
+	docker-compose up
+
+clean-up-si-test:
+	docker-compose down
 
 check: test

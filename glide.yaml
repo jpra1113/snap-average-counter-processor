@@ -6,6 +6,9 @@ import:
 - package: github.com/op/go-logging
 - package: github.com/go-resty/resty
   version: ~0.11.0
+- package: github.com/gobwas/glob
+  version: v0.2.2
 testImport:
 - package: github.com/smartystreets/goconvey
-  version: ~1.6.2
+  subpackages:
+  - convey

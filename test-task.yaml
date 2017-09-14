@@ -1,0 +1,32 @@
+---
+  version: 1
+  schedule:
+    type: "simple"
+    interval: "1s"
+  workflow:
+    collect:
+      metrics:
+        # /intel/docker/*: {}
+        /intel/procfs/meminfo/*: {}
+        /intel/procfs/disk/*: {}
+        /intel/procfs/cpu/*: {}
+      config:
+        /intel/procfs:
+          proc_path": "/proc"
+        /intel/docker:
+          endpoint: "unix:///var/run/docker.sock"
+      process:
+        - plugin_name: "snap-average-counter-processor"
+          config:
+            namespaces: "default,"
+            exclude_metrics: "*percentage, *perc, intel/docker/spec/*"
+          publish:
+            - plugin_name: "influxdb"
+              config:
+                host: "influxsrv"
+                port: 8086
+                database: "snap"
+                user: "root"
+                password: "default"
+                https: false
+                skip-verify: false
