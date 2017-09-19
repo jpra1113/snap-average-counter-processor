@@ -20,15 +20,24 @@ limitations under the License.
 package main
 
 import (
+	"github.com/aasssddd/snap-plugin-lib-go/v1/plugin"
 	"github.com/hyperpilotio/snap-average-counter-processor/agent"
-	"github.com/intelsdi-x/snap-plugin-lib-go/v1/plugin"
+	"google.golang.org/grpc"
 )
 
 const (
-	pluginName    = "snap-average-counter-processor"
-	pluginVersion = 1
+	pluginName     = "snap-average-counter-processor"
+	pluginVersion  = 1
+	maxMessageSize = 100 << 20
 )
 
 func main() {
-	plugin.StartProcessor(agent.NewProcessor(), pluginName, pluginVersion)
+	plugin.StartProcessor(
+		agent.NewProcessor(),
+		pluginName,
+		pluginVersion,
+		plugin.GRPCServerOptions(grpc.MaxMsgSize(maxMessageSize)),
+		plugin.GRPCServerOptions(grpc.MaxSendMsgSize(maxMessageSize)),
+		plugin.GRPCServerOptions(grpc.MaxRecvMsgSize(maxMessageSize)),
+	)
 }

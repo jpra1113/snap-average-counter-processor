@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aasssddd/snap-plugin-lib-go/v1/plugin"
 	"github.com/gobwas/glob"
-	"github.com/intelsdi-x/snap-plugin-lib-go/v1/plugin"
 	logging "github.com/op/go-logging"
 )
 

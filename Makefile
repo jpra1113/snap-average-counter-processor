@@ -42,7 +42,7 @@ build-test-image: build-linux
 	docker build -t average-counter-processor .
 
 run-si-test: build-test-image clean-up-si-test
-	docker-compose up
+	docker-compose up 
 
 clean-up-si-test:
 	docker-compose down

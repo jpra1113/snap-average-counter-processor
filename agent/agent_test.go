@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intelsdi-x/snap-plugin-lib-go/v1/plugin"
+	"github.com/aasssddd/snap-plugin-lib-go/v1/plugin"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -33,8 +33,15 @@ func TestProcessor(t *testing.T) {
 				"namespaces":      "default, hyperpilot",
 				"exclude_metrics": "*percentage, *perc, intel/docker/spec/*",
 			}
-			// in, out, out, in, out, out, out
+			// out, in, out, out, in, out, out, out
 			mts := []plugin.Metric{
+				plugin.Metric{
+					Namespace: plugin.NewNamespace("intel", "procfs", "cpu", "guest_nice_percentage"),
+					Config:    map[string]interface{}{"pw": "123aB"},
+					Data:      789,
+					Unit:      "int",
+					Timestamp: time.Now(),
+				},
 				plugin.Metric{
 					Namespace: plugin.NewNamespace("intel", "test", "a", "b"),
 					Config:    map[string]interface{}{"pw": "123aB"},
@@ -92,6 +99,7 @@ func TestProcessor(t *testing.T) {
 				},
 			}
 			result, err := p.Process(mts, cfg)
+
 			Convey("Should only process 1 data", func() {
 				So(len(result), ShouldEqual, 2)
 			})
