@@ -84,6 +84,23 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 		return mts, errors.New("Unable to read namespaces config: " + err.Error())
 	}
 	processNamespaces := strings.Split(strings.Replace(namespacesConfig, " ", "", -1), ",")
+
+	isEmptyNamespaceInclude, err := cfg.GetBool("include_empty_namespace")
+	if err != nil {
+		isEmptyNamespaceInclude = false
+	}
+
+	if isEmptyNamespaceInclude {
+		processNamespaces = append(processNamespaces, "")
+	}
+
+	excepts, err := cfg.GetString("excepts")
+	if err != nil {
+		excepts = ""
+	}
+
+	exceptsList := strings.Split(strings.Replace(excepts, " ", "", -1), ",")
+
 	// processNamespaces = append(processNamespaces, "")
 	log.Infof("Process namespaces: %+v", processNamespaces)
 	excludeMetricsConfig, err := cfg.GetString("exclude_metrics")
@@ -96,11 +113,12 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 	metrics := []plugin.Metric{}
 	for _, mt := range mts {
 		podNamespace, _ := mt.Tags["io.kubernetes.pod.namespace"]
-		// TODO: pass metrics with defined filterMetricKeywords
-		if (podNamespace == "" || inArray(podNamespace, processNamespaces)) &&
-			!isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), excludeKeywordsList) {
-			mt.Data = p.caluAverageData(mt, log)
-			metrics = append(metrics, mt)
+		if (isEmptyNamespaceInclude && podNamespace == "") || inArray(podNamespace, processNamespaces) {
+			if !isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), excludeKeywordsList) ||
+				isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), exceptsList) {
+				mt.Data = p.caluAverageData(mt, log)
+				metrics = append(metrics, mt)
+			}
 		}
 	}
 

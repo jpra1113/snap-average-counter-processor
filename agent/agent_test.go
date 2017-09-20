@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,50 +11,43 @@ import (
 
 func TestProcessor(t *testing.T) {
 	Convey("Test Processor", t, func() {
-		// Convey("Process int metric", func() {
-		// 	metrics := []plugin.Metric{
-		// 		plugin.Metric{
-		// 			Namespace: plugin.NewNamespace("x", "y", "z"),
-		// 			Config:    map[string]interface{}{"pw": "123aB"},
-		// 			Data:      345678,
-		// 			Tags:      map[string]string{"hello": "world"},
-		// 			Unit:      "int",
-		// 			Timestamp: time.Now(),
-		// 		},
-		// 	}
-		// 	mts, err := p.Process(metrics, plugin.Config{})
-		// 	So(mts, ShouldNotBeNil)
-		// 	So(err, ShouldBeNil)
-		// 	So(mts[0].Data, ShouldEqual, 876543)
-		// })
-
 		Convey("Test Process", func() {
 			p := NewProcessor()
 			cfg := plugin.Config{
-				"namespaces":      "default, hyperpilot",
-				"exclude_metrics": "*percentage, *perc, intel/docker/spec/*",
+				"namespaces":              "default, hyperpilot",
+				"include_empty_namespace": true,
+				"exclude_metrics":         "intel/docker/spec/*, intel/procfs/*, intel/docker/stats/*",
+				"excepts":                 "*perc, *percentage",
 			}
-			// out, in, out, out, in, out, out, out
+
+			// in, out, out, in, in, out, out, out, out
 			mts := []plugin.Metric{
+				plugin.Metric{
+					Namespace: plugin.NewNamespace("intel", "docker", "spec", "perc"),
+					Config:    map[string]interface{}{"pw": "123aB"},
+					Data:      789,
+					Tags:      map[string]string{"io.kubernetes.pod.namespace": "hyperpilot"},
+					Unit:      "int",
+					Timestamp: time.Now(),
+				},
+				plugin.Metric{
+					Namespace: plugin.NewNamespace("intel", "docker", "spec", "hmm"),
+					Config:    map[string]interface{}{"pw": "123aB"},
+					Data:      789,
+					Unit:      "int",
+					Timestamp: time.Now(),
+				},
+				plugin.Metric{
+					Namespace: plugin.NewNamespace("intel", "procfs", "cpu", "guest_nice"),
+					Config:    map[string]interface{}{"pw": "123aB"},
+					Data:      789,
+					Unit:      "int",
+					Timestamp: time.Now(),
+				},
 				plugin.Metric{
 					Namespace: plugin.NewNamespace("intel", "procfs", "cpu", "guest_nice_percentage"),
 					Config:    map[string]interface{}{"pw": "123aB"},
 					Data:      789,
-					Unit:      "int",
-					Timestamp: time.Now(),
-				},
-				plugin.Metric{
-					Namespace: plugin.NewNamespace("intel", "test", "a", "b"),
-					Config:    map[string]interface{}{"pw": "123aB"},
-					Data:      789,
-					Unit:      "int",
-					Timestamp: time.Now(),
-				},
-				plugin.Metric{
-					Namespace: plugin.NewNamespace("intel", "docker", "stats", "cgroups", "cpu_stats", "test_percentage"),
-					Config:    map[string]interface{}{"pw": "123aB"},
-					Data:      123,
-					Tags:      map[string]string{"io.kubernetes.pod.namespace": "default"},
 					Unit:      "int",
 					Timestamp: time.Now(),
 				},
@@ -100,8 +94,12 @@ func TestProcessor(t *testing.T) {
 			}
 			result, err := p.Process(mts, cfg)
 
+			for _, item := range result {
+				fmt.Println(item.Namespace)
+			}
+
 			Convey("Should only process 1 data", func() {
-				So(len(result), ShouldEqual, 2)
+				So(len(result), ShouldEqual, 3)
 			})
 			Convey("No error returned", func() {
 				So(err, ShouldBeNil)
