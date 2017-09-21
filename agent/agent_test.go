@@ -14,10 +14,11 @@ func TestProcessor(t *testing.T) {
 		Convey("Test Process", func() {
 			p := NewProcessor()
 			cfg := plugin.Config{
-				"namespaces":              "default, hyperpilot",
-				"include_empty_namespace": true,
-				"exclude_metrics":         "intel/docker/spec/*, intel/procfs/*, intel/docker/stats/*",
-				"excepts":                 "*perc, *percentage",
+				"collect.namespaces":              "default, hyperpilot",
+				"collect.include_empty_namespace": true,
+				"collect.exclude_metrics":         "intel/docker/spec/*, intel/procfs/*, intel/docker/stats/*",
+				"collect.exclude_metrics.except":  "*perc, *percentage",
+				"average.exclude_metrics":         "*prec, *precentage",
 			}
 
 			// in, out, out, in, in, out, out, out, out

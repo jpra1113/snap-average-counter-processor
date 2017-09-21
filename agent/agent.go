@@ -79,13 +79,13 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 
 	log := p.Log.Logger
 	log.Infof("Process received metric size: %d", len(mts))
-	namespacesConfig, err := cfg.GetString("namespaces")
+	namespacesConfig, err := cfg.GetString("collect.namespaces")
 	if err != nil {
 		return mts, errors.New("Unable to read namespaces config: " + err.Error())
 	}
 	processNamespaces := strings.Split(strings.Replace(namespacesConfig, " ", "", -1), ",")
 
-	isEmptyNamespaceInclude, err := cfg.GetBool("include_empty_namespace")
+	isEmptyNamespaceInclude, err := cfg.GetBool("collect.include_empty_namespace")
 	if err != nil {
 		isEmptyNamespaceInclude = false
 	}
@@ -94,16 +94,23 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 		processNamespaces = append(processNamespaces, "")
 	}
 
-	excepts, err := cfg.GetString("excepts")
+	excepts, err := cfg.GetString("collect.exclude_metrics.except")
 	if err != nil {
 		excepts = ""
 	}
 
 	exceptsList := strings.Split(strings.Replace(excepts, " ", "", -1), ",")
 
+	averageExclude, err := cfg.GetString("average.exclude_metrics")
+	if err != nil {
+		averageExclude = ""
+	}
+	averageExcludeList := strings.Split(strings.Replace(averageExclude, " ", "", -1), ",")
+
 	// processNamespaces = append(processNamespaces, "")
 	log.Infof("Process namespaces: %+v", processNamespaces)
-	excludeMetricsConfig, err := cfg.GetString("exclude_metrics")
+	excludeMetricsConfig, err := cfg.GetString("collect.exclude_metrics")
+
 	if err != nil {
 		return mts, errors.New("Unable to read filterMetricKeywords config: " + err.Error())
 	}
@@ -116,7 +123,9 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 		if (isEmptyNamespaceInclude && podNamespace == "") || inArray(podNamespace, processNamespaces) {
 			if !isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), excludeKeywordsList) ||
 				isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), exceptsList) {
-				mt.Data = p.caluAverageData(mt, log)
+				if !isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), averageExcludeList) {
+					mt.Data = p.caluAverageData(mt, log)
+				}
 				metrics = append(metrics, mt)
 			}
 		}
