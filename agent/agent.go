@@ -101,11 +101,11 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 
 	exceptsList := strings.Split(strings.Replace(excepts, " ", "", -1), ",")
 
-	averageExclude, err := cfg.GetString("average.exclude_metrics")
+	average, err := cfg.GetString("average")
 	if err != nil {
-		averageExclude = ""
+		average = ""
 	}
-	averageExcludeList := strings.Split(strings.Replace(averageExclude, " ", "", -1), ",")
+	averageList := strings.Split(strings.Replace(average, " ", "", -1), ",")
 
 	// processNamespaces = append(processNamespaces, "")
 	log.Infof("Process namespaces: %+v", processNamespaces)
@@ -123,7 +123,7 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 		if (isEmptyNamespaceInclude && podNamespace == "") || inArray(podNamespace, processNamespaces) {
 			if !isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), excludeKeywordsList) ||
 				isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), exceptsList) {
-				if !isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), averageExcludeList) {
+				if isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), averageList) {
 					mt.Data = p.caluAverageData(mt, log)
 				}
 				metrics = append(metrics, mt)
