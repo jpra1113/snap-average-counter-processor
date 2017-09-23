@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intelsdi-x/snap-plugin-lib-go/v1/plugin"
+	"github.com/aasssddd/snap-plugin-lib-go/v1/plugin"
+	"github.com/gobwas/glob"
 	logging "github.com/op/go-logging"
 )
 
@@ -54,7 +55,7 @@ func NewLogger(filesPath string, name string) (*FileLog, error) {
 
 	fileLog := logging.NewLogBackend(logFile, "["+name+"]", 0)
 	fileLogLevel := logging.AddModuleLevel(fileLog)
-	fileLogLevel.SetLevel(logging.INFO, "")
+	fileLogLevel.SetLevel(logging.ERROR, "")
 	fileLogBackend := logging.NewBackendFormatter(fileLog, logFormatter)
 
 	log.SetBackend(logging.SetBackend(fileLogBackend))
@@ -78,43 +79,65 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 
 	log := p.Log.Logger
 	log.Infof("Process received metric size: %d", len(mts))
-
-	namespacesConfig, err := cfg.GetString("namespaces")
+	namespacesConfig, err := cfg.GetString("collect.namespaces")
 	if err != nil {
 		return mts, errors.New("Unable to read namespaces config: " + err.Error())
 	}
-	processNamespaces := strings.Split(namespacesConfig, ",")
-	processNamespaces = append(processNamespaces, "")
-	log.Infof("Process namespaces: %+v", processNamespaces)
+	processNamespaces := strings.Split(strings.Replace(namespacesConfig, " ", "", -1), ",")
 
-	filterMetricKeywordsConfig, err := cfg.GetString("filterMetricKeywords")
+	isEmptyNamespaceInclude, err := cfg.GetBool("collect.include_empty_namespace")
+	if err != nil {
+		isEmptyNamespaceInclude = false
+	}
+
+	if isEmptyNamespaceInclude {
+		processNamespaces = append(processNamespaces, "")
+	}
+
+	excepts, err := cfg.GetString("collect.exclude_metrics.except")
+	if err != nil {
+		excepts = ""
+	}
+
+	exceptsList := strings.Split(strings.Replace(excepts, " ", "", -1), ",")
+
+	average, err := cfg.GetString("average")
+	if err != nil {
+		average = ""
+	}
+	averageList := strings.Split(strings.Replace(average, " ", "", -1), ",")
+
+	// processNamespaces = append(processNamespaces, "")
+	log.Infof("Process namespaces: %+v", processNamespaces)
+	excludeMetricsConfig, err := cfg.GetString("collect.exclude_metrics")
+
 	if err != nil {
 		return mts, errors.New("Unable to read filterMetricKeywords config: " + err.Error())
 	}
-	filterMetricKeywords := strings.Split(filterMetricKeywordsConfig, ",")
-	log.Infof("Process filterMetricKeywords: %+v", filterMetricKeywords)
+	excludeKeywordsList := strings.Split(strings.Replace(excludeMetricsConfig, " ", "", -1), ",")
+	log.Infof("Process filterMetricKeywords: %+v", excludeKeywordsList)
 
 	metrics := []plugin.Metric{}
 	for _, mt := range mts {
 		podNamespace, _ := mt.Tags["io.kubernetes.pod.namespace"]
-		if inArray(podNamespace, processNamespaces) {
-			averageData := p.caluAverageData(mt, filterMetricKeywords, log)
-			if averageData != -1 {
-				mt.Data = averageData
-				mt.Tags["processed"] = "true"
+		if (isEmptyNamespaceInclude && podNamespace == "") || inArray(podNamespace, processNamespaces) {
+			if !isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), excludeKeywordsList) ||
+				isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), exceptsList) {
+				if isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), averageList) {
+					mt.Data = p.caluAverageData(mt, log)
+				}
+				metrics = append(metrics, mt)
 			}
-			metrics = append(metrics, mt)
 		}
 	}
 
 	log.Infof("Process filter metric size %d: ", len(metrics))
-	log.Infof("Process filter metric %+v: ", metrics)
+	// log.Infof("Process filter metric %+v: ", metrics)
 	return metrics, nil
 }
 
 /*
 	GetConfigPolicy() returns the configPolicy for your plugin.
-
 	A config policy is how users can provide configuration info to
 	plugin. Here you define what sorts of config info your plugin
 	needs and/or requires.
@@ -126,7 +149,6 @@ func (p *SnapProcessor) GetConfigPolicy() (plugin.ConfigPolicy, error) {
 
 func (p *SnapProcessor) caluAverageData(
 	mt plugin.Metric,
-	filterMetricKeywords []string,
 	log *logging.Logger) float64 {
 	namespaces := mt.Namespace.Strings()
 	mapKey := strings.Join(namespaces, "/")
@@ -142,25 +164,22 @@ func (p *SnapProcessor) caluAverageData(
 		}
 	}
 
-	// filter do not need counter metric
-	caluMetric := namespaces[len(namespaces)-1]
-	filterCache := false
-	for _, metricKeyword := range filterMetricKeywords {
-		if strings.Contains(caluMetric, metricKeyword) {
-			filterCache = true
-			break
-		}
+	p.Cache[mapKey] = PreviousData{
+		Data:   convertInterface(mt.Data),
+		Create: mt.Timestamp,
 	}
-
-	if !filterCache {
-		p.Cache[mapKey] = PreviousData{
-			Data:   convertInterface(mt.Data),
-			Create: mt.Timestamp,
-		}
-		log.Infof("Cache this time metric vaule: %+v", p.Cache[mapKey])
-	}
-
+	log.Infof("Cache this time metric vaule: %+v", p.Cache[mapKey])
 	return averageData
+}
+
+func isKeywordMatch(keyword string, patterns []string) bool {
+	isMatched := false
+	for _, pattern := range patterns {
+		g := glob.MustCompile(pattern)
+		isMatched = isMatched || g.Match(keyword)
+	}
+	return isMatched
+
 }
 
 func convertInterface(data interface{}) float64 {
