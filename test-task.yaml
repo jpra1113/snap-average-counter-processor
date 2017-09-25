@@ -18,8 +18,11 @@
       process:
         - plugin_name: "snap-average-counter-processor"
           config:
-            namespaces: "default,"
-            exclude_metrics: "*percentage, *perc, intel/docker/spec/*"
+            collect.namespaces: "default, hyperpilot"
+            collect.include_empty_namespace: true
+            collect.exclude_metrics: "intel/procfs/*, intel/docker/stats/*"
+            collect.exclude_metrics.except: "*perc, *percentage"
+            average: "*"
           publish:
             - plugin_name: "influxdb"
               config:
