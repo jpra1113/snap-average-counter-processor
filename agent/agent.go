@@ -2,6 +2,7 @@ package agent
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -28,10 +29,87 @@ type PreviousData struct {
 	Create time.Time
 }
 
+type ProcessorConfig struct {
+	ProcessNamespaces       []string
+	ExceptsList             []glob.Glob
+	ExcludeKeywordsList     []glob.Glob
+	AverageList             []glob.Glob
+	IsEmptyNamespaceInclude bool
+}
+
+func NewProcessorConfig(cfg plugin.Config, log *logging.Logger) (*ProcessorConfig, error) {
+	namespacesConfig, err := cfg.GetString("collect.namespaces")
+	if err != nil {
+		return nil, errors.New("Unable to read namespaces config: " + err.Error())
+	}
+	processNamespaces := strings.Split(strings.Replace(namespacesConfig, " ", "", -1), ",")
+
+	isEmptyNamespaceInclude, err := cfg.GetBool("collect.include_empty_namespace")
+	if err != nil {
+		isEmptyNamespaceInclude = false
+	}
+
+	if isEmptyNamespaceInclude {
+		processNamespaces = append(processNamespaces, "")
+	}
+
+	excepts, err := cfg.GetString("collect.exclude_metrics.except")
+	if err != nil {
+		excepts = ""
+	}
+
+	exceptsList := []glob.Glob{}
+	for _, except := range strings.Split(strings.Replace(excepts, " ", "", -1), ",") {
+		g, err := glob.Compile(except)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to compile pattern %s: %s", except, err.Error())
+		}
+		exceptsList = append(exceptsList, g)
+	}
+
+	average, err := cfg.GetString("average")
+	if err != nil {
+		average = ""
+	}
+	averageList := []glob.Glob{}
+	for _, average := range strings.Split(strings.Replace(average, " ", "", -1), ",") {
+		g, err := glob.Compile(average)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to compile pattern %s: %s", average, err.Error())
+		}
+		averageList = append(averageList, g)
+	}
+
+	log.Infof("Process namespaces: %+v", processNamespaces)
+	excludeMetricsConfig, err := cfg.GetString("collect.exclude_metrics")
+	if err != nil {
+		return nil, errors.New("Unable to read filterMetricKeywords config: " + err.Error())
+	}
+
+	excludeKeywordsList := []glob.Glob{}
+	for _, exclude := range strings.Split(strings.Replace(excludeMetricsConfig, " ", "", -1), ",") {
+		g, err := glob.Compile(exclude)
+		if err != nil {
+			return nil, fmt.Errorf("Unable to compile pattern %s: %s", exclude, err.Error())
+		}
+		excludeKeywordsList = append(excludeKeywordsList, g)
+	}
+	log.Infof("Process filterMetricKeywords: %+v", excludeKeywordsList)
+
+	return &ProcessorConfig{
+		ProcessNamespaces:       processNamespaces,
+		ExcludeKeywordsList:     excludeKeywordsList,
+		ExceptsList:             exceptsList,
+		AverageList:             averageList,
+		IsEmptyNamespaceInclude: isEmptyNamespaceInclude,
+	}, nil
+}
+
 // Processor test processor
 type SnapProcessor struct {
-	Cache map[string]PreviousData
-	Log   *FileLog
+	Cache  map[string]PreviousData
+	Log    *FileLog
+	Config *ProcessorConfig
 }
 
 // NewProcessor generate processor
@@ -78,53 +156,24 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 	}
 
 	log := p.Log.Logger
-	log.Infof("Process received metric size: %d", len(mts))
-	namespacesConfig, err := cfg.GetString("collect.namespaces")
-	if err != nil {
-		return mts, errors.New("Unable to read namespaces config: " + err.Error())
-	}
-	processNamespaces := strings.Split(strings.Replace(namespacesConfig, " ", "", -1), ",")
 
-	isEmptyNamespaceInclude, err := cfg.GetBool("collect.include_empty_namespace")
-	if err != nil {
-		isEmptyNamespaceInclude = false
+	if p.Config == nil {
+		config, err := NewProcessorConfig(cfg, log)
+		if err != nil {
+			return mts, errors.New("Unable to create processor config: " + err.Error())
+		}
+		p.Config = config
 	}
 
-	if isEmptyNamespaceInclude {
-		processNamespaces = append(processNamespaces, "")
-	}
-
-	excepts, err := cfg.GetString("collect.exclude_metrics.except")
-	if err != nil {
-		excepts = ""
-	}
-
-	exceptsList := strings.Split(strings.Replace(excepts, " ", "", -1), ",")
-
-	average, err := cfg.GetString("average")
-	if err != nil {
-		average = ""
-	}
-	averageList := strings.Split(strings.Replace(average, " ", "", -1), ",")
-
-	// processNamespaces = append(processNamespaces, "")
-	log.Infof("Process namespaces: %+v", processNamespaces)
-	excludeMetricsConfig, err := cfg.GetString("collect.exclude_metrics")
-
-	if err != nil {
-		return mts, errors.New("Unable to read filterMetricKeywords config: " + err.Error())
-	}
-	excludeKeywordsList := strings.Split(strings.Replace(excludeMetricsConfig, " ", "", -1), ",")
-	log.Infof("Process filterMetricKeywords: %+v", excludeKeywordsList)
-
+	config := p.Config
 	metrics := []plugin.Metric{}
 	for _, mt := range mts {
 		podNamespace, _ := mt.Tags["io.kubernetes.pod.namespace"]
-		if (isEmptyNamespaceInclude && podNamespace == "") || inArray(podNamespace, processNamespaces) {
-			if !isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), excludeKeywordsList) ||
-				isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), exceptsList) {
-				if isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), averageList) {
-					mt.Data = p.caluAverageData(mt, log)
+		if (config.IsEmptyNamespaceInclude && podNamespace == "") || inArray(podNamespace, config.ProcessNamespaces) {
+			if !isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), config.ExcludeKeywordsList) ||
+				isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), config.ExceptsList) {
+				if isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), config.AverageList) {
+					mt.Data = p.CalculateAverageData(mt, log)
 				}
 				metrics = append(metrics, mt)
 			}
@@ -132,7 +181,7 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 	}
 
 	log.Infof("Process filter metric size %d: ", len(metrics))
-	// log.Infof("Process filter metric %+v: ", metrics)
+
 	return metrics, nil
 }
 
@@ -147,7 +196,7 @@ func (p *SnapProcessor) GetConfigPolicy() (plugin.ConfigPolicy, error) {
 	return *policy, nil
 }
 
-func (p *SnapProcessor) caluAverageData(
+func (p *SnapProcessor) CalculateAverageData(
 	mt plugin.Metric,
 	log *logging.Logger) float64 {
 	namespaces := mt.Namespace.Strings()
@@ -172,14 +221,14 @@ func (p *SnapProcessor) caluAverageData(
 	return averageData
 }
 
-func isKeywordMatch(keyword string, patterns []string) bool {
-	isMatched := false
+func isKeywordMatch(keyword string, patterns []glob.Glob) bool {
 	for _, pattern := range patterns {
-		g := glob.MustCompile(pattern)
-		isMatched = isMatched || g.Match(keyword)
+		if pattern.Match(keyword) {
+			return true
+		}
 	}
-	return isMatched
 
+	return false
 }
 
 func convertInterface(data interface{}) float64 {
