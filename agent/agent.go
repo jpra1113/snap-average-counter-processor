@@ -60,41 +60,58 @@ func NewProcessorConfig(cfg plugin.Config, log *logging.Logger) (*ProcessorConfi
 
 	exceptsList := []glob.Glob{}
 	for _, except := range strings.Split(strings.Replace(excepts, " ", "", -1), ",") {
+		if except == "" {
+			continue
+		}
+
 		g, err := glob.Compile(except)
 		if err != nil {
 			return nil, fmt.Errorf("Unable to compile pattern %s: %s", except, err.Error())
 		}
+
 		exceptsList = append(exceptsList, g)
 	}
+	log.Infof("Process excepts list: %+v", exceptsList)
 
 	average, err := cfg.GetString("average")
 	if err != nil {
 		average = ""
 	}
+
 	averageList := []glob.Glob{}
 	for _, average := range strings.Split(strings.Replace(average, " ", "", -1), ",") {
+		if average == "" {
+			continue
+		}
+
 		g, err := glob.Compile(average)
 		if err != nil {
 			return nil, fmt.Errorf("Unable to compile pattern %s: %s", average, err.Error())
 		}
+
 		averageList = append(averageList, g)
 	}
+	log.Infof("Process average list: %+v", averageList)
 
 	log.Infof("Process namespaces: %+v", processNamespaces)
 	excludeMetricsConfig, err := cfg.GetString("collect.exclude_metrics")
 	if err != nil {
-		return nil, errors.New("Unable to read filterMetricKeywords config: " + err.Error())
+		excludeMetricsConfig = ""
 	}
 
 	excludeKeywordsList := []glob.Glob{}
 	for _, exclude := range strings.Split(strings.Replace(excludeMetricsConfig, " ", "", -1), ",") {
+		if exclude == "" {
+			continue
+		}
+
 		g, err := glob.Compile(exclude)
 		if err != nil {
 			return nil, fmt.Errorf("Unable to compile pattern %s: %s", exclude, err.Error())
 		}
 		excludeKeywordsList = append(excludeKeywordsList, g)
 	}
-	log.Infof("Process filterMetricKeywords: %+v", excludeKeywordsList)
+	log.Infof("Process exclude keywords list: %+v", excludeKeywordsList)
 
 	return &ProcessorConfig{
 		ProcessNamespaces:       processNamespaces,
