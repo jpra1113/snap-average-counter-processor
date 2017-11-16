@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -71,15 +72,15 @@ func NewProcessorConfig(cfg plugin.Config, log *logging.Logger) (*ProcessorConfi
 
 		exceptsList = append(exceptsList, g)
 	}
-	log.Infof("Process excepts list: %+v", exceptsList)
+	log.Infof("Process excepts list: %s", excepts)
 
-	average, err := cfg.GetString("average")
+	averages, err := cfg.GetString("average")
 	if err != nil {
 		average = ""
 	}
 
 	averageList := []glob.Glob{}
-	for _, average := range strings.Split(strings.Replace(average, " ", "", -1), ",") {
+	for _, average := range strings.Split(strings.Replace(averages, " ", "", -1), ",") {
 		if average == "" {
 			continue
 		}
@@ -91,7 +92,7 @@ func NewProcessorConfig(cfg plugin.Config, log *logging.Logger) (*ProcessorConfi
 
 		averageList = append(averageList, g)
 	}
-	log.Infof("Process average list: %+v", averageList)
+	log.Infof("Process average list: %s", averages)
 
 	log.Infof("Process namespaces: %+v", processNamespaces)
 	excludeMetricsConfig, err := cfg.GetString("collect.exclude_metrics")
@@ -111,7 +112,7 @@ func NewProcessorConfig(cfg plugin.Config, log *logging.Logger) (*ProcessorConfi
 		}
 		excludeKeywordsList = append(excludeKeywordsList, g)
 	}
-	log.Infof("Process exclude keywords list: %+v", excludeKeywordsList)
+	log.Infof("Process exclude keywords list: %s", excludeMetricsConfig)
 
 	return &ProcessorConfig{
 		ProcessNamespaces:       processNamespaces,
@@ -165,7 +166,7 @@ func NewLogger(filesPath string, name string) (*FileLog, error) {
 // Process test process function
 func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugin.Metric, error) {
 	if p.Log == nil {
-		processLog, err := NewLogger("/tmp", "processor")
+		processLog, err := NewLogger("/tmp", "processor"+strconv.Itoa(os.Getpid()))
 		if err != nil {
 			return mts, errors.New("Error creating process logger: " + err.Error())
 		}
