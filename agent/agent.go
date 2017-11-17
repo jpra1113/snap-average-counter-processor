@@ -76,7 +76,7 @@ func NewProcessorConfig(cfg plugin.Config, log *logging.Logger) (*ProcessorConfi
 
 	averages, err := cfg.GetString("average")
 	if err != nil {
-		average = ""
+		averages = ""
 	}
 
 	averageList := []glob.Glob{}
@@ -125,15 +125,14 @@ func NewProcessorConfig(cfg plugin.Config, log *logging.Logger) (*ProcessorConfi
 
 // Processor test processor
 type SnapProcessor struct {
-	Cache  map[string]PreviousData
-	Log    *FileLog
-	Config *ProcessorConfig
+	Cache map[string]*PreviousData
+	Log   *FileLog
 }
 
 // NewProcessor generate processor
 func NewProcessor() plugin.Processor {
 	return &SnapProcessor{
-		Cache: make(map[string]PreviousData),
+		Cache: make(map[string]*PreviousData),
 	}
 }
 
@@ -175,15 +174,11 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 
 	log := p.Log.Logger
 
-	if p.Config == nil {
-		config, err := NewProcessorConfig(cfg, log)
-		if err != nil {
-			return mts, errors.New("Unable to create processor config: " + err.Error())
-		}
-		p.Config = config
+	config, err := NewProcessorConfig(cfg, log)
+	if err != nil {
+		return mts, errors.New("Unable to create processor config: " + err.Error())
 	}
 
-	config := p.Config
 	metrics := []plugin.Metric{}
 	for _, mt := range mts {
 		podNamespace, _ := mt.Tags["io.kubernetes.pod.namespace"]
@@ -219,23 +214,25 @@ func (p *SnapProcessor) CalculateAverageData(
 	log *logging.Logger) float64 {
 	namespaces := mt.Namespace.Strings()
 	mapKey := strings.Join(namespaces, "/")
-	averageData := float64(-1)
+	averageData := float64(0)
 	previousData, ok := p.Cache[mapKey]
 	if ok {
-		log.Infof("Find %s previous cache metric vaule: %+v", mapKey, previousData)
+		log.Infof("Find %s previous cache metric value: %+v", mapKey, previousData)
 		diffSeconds := mt.Timestamp.Sub(previousData.Create).Seconds()
 		diffValue := (convertInterface(mt.Data) - previousData.Data)
 		if diffSeconds > 0 && diffValue > 0 {
 			averageData = (convertInterface(mt.Data) - previousData.Data) / diffSeconds
 			log.Infof("Calculate %s averageData(%f) on %s", mapKey, averageData, mt.Timestamp)
 		}
+	} else {
+		previousData := &PreviousData{}
+		p.Cache[mapKey] = previousData
 	}
 
-	p.Cache[mapKey] = PreviousData{
-		Data:   convertInterface(mt.Data),
-		Create: mt.Timestamp,
-	}
-	log.Infof("Cache this time metric vaule: %+v", p.Cache[mapKey])
+	previousData.Data = convertInterface(mt.Data)
+	previousData.Create = mt.Timestamp
+
+	log.Infof("Cache this time metric %s value: %+v", mapKey, previousData)
 	return averageData
 }
 

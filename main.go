@@ -39,5 +39,6 @@ func main() {
 		plugin.GRPCServerOptions(grpc.MaxMsgSize(maxMessageSize)),
 		plugin.GRPCServerOptions(grpc.MaxSendMsgSize(maxMessageSize)),
 		plugin.GRPCServerOptions(grpc.MaxRecvMsgSize(maxMessageSize)),
+		plugin.RoutingStrategy(plugin.StickyRouter),
 	)
 }
