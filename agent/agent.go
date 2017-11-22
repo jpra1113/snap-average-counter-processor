@@ -212,12 +212,13 @@ func (p *SnapProcessor) CalculateAverageData(mt plugin.Metric) float64 {
 			averageData = (convertInterface(mt.Data) - previousData.Data) / diffSeconds
 			log.Debugf("Calculate %s averageData(%f) on %s", mapKey, averageData, mt.Timestamp)
 		}
+	} else {
+		previousData = &PreviousData{}
+		p.Cache[mapKey] = previousData
 	}
 
-	p.Cache[mapKey] = &PreviousData{
-		Data:   convertInterface(mt.Data),
-		Create: mt.Timestamp,
-	}
+	previousData.Data = convertInterface(mt.Data)
+	previousData.Create = mt.Timestamp
 
 	log.Debugf("Cache this time metric %s value: %+v", mapKey, previousData)
 	return averageData
