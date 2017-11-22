@@ -4,26 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/aasssddd/snap-plugin-lib-go/v1/plugin"
 	"github.com/gobwas/glob"
-	logging "github.com/op/go-logging"
 )
 
-var log = logging.MustGetLogger("processor")
-var logFormatter = logging.MustStringFormatter(
-	` %{level:.1s}%{time:0102 15:04:05.999999} %{pid} %{shortfile}] %{message}`,
-)
-
-type FileLog struct {
-	Name    string
-	Logger  *logging.Logger
-	LogFile *os.File
-}
+var log *logrus.Entry
 
 type PreviousData struct {
 	Data   float64
@@ -38,7 +27,12 @@ type ProcessorConfig struct {
 	IsEmptyNamespaceInclude bool
 }
 
-func NewProcessorConfig(cfg plugin.Config, log *logging.Logger) (*ProcessorConfig, error) {
+func init() {
+	log = logrus.New().WithField("processor", "average")
+	log.Logger.Out = os.Stdout
+}
+
+func NewProcessorConfig(cfg plugin.Config) (*ProcessorConfig, error) {
 	namespacesConfig, err := cfg.GetString("collect.namespaces")
 	if err != nil {
 		return nil, errors.New("Unable to read namespaces config: " + err.Error())
@@ -126,7 +120,6 @@ func NewProcessorConfig(cfg plugin.Config, log *logging.Logger) (*ProcessorConfi
 // Processor test processor
 type SnapProcessor struct {
 	Cache map[string]*PreviousData
-	Log   *FileLog
 }
 
 // NewProcessor generate processor
@@ -136,64 +129,61 @@ func NewProcessor() plugin.Processor {
 	}
 }
 
-func NewLogger(filesPath string, name string) (*FileLog, error) {
-	logDirPath := path.Join(filesPath, "log")
-	if _, err := os.Stat(logDirPath); os.IsNotExist(err) {
-		os.Mkdir(logDirPath, 0777)
+func (p *SnapProcessor) isCollectNamespaces(config *ProcessorConfig, metricNamespace string, podNamespace string) bool {
+	emptyNamespace := podNamespace == ""
+	if config.IsEmptyNamespaceInclude && emptyNamespace {
+		return true
 	}
 
-	logFilePath := path.Join(logDirPath, name+".log")
-	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_RDWR, 0666)
-	if err != nil {
-		return nil, errors.New("Unable to create log file:" + err.Error())
+	needCollect := inArray(podNamespace, config.ProcessNamespaces)
+	if !needCollect {
+		log.Infof("%s\n is not in collect namespaces, Do not need to be average processing", metricNamespace)
 	}
 
-	fileLog := logging.NewLogBackend(logFile, "["+name+"]", 0)
-	fileLogLevel := logging.AddModuleLevel(fileLog)
-	fileLogLevel.SetLevel(logging.ERROR, "")
-	fileLogBackend := logging.NewBackendFormatter(fileLog, logFormatter)
+	return needCollect
+}
 
-	log.SetBackend(logging.SetBackend(fileLogBackend))
+func (p *SnapProcessor) isIncludMetricNamespaces(config *ProcessorConfig, metricNamespace string) bool {
+	if !isKeywordMatch(metricNamespace, config.ExcludeKeywordsList) || isKeywordMatch(metricNamespace, config.ExceptsList) {
+		return true
+	}
 
-	return &FileLog{
-		Name:    name,
-		Logger:  log,
-		LogFile: logFile,
-	}, nil
+	log.Infof("%s\n is not in metric namespaces, Do not need to be average processing", metricNamespace)
+	return false
+}
+
+func (p *SnapProcessor) isSkipProcess(data interface{}) bool {
+	if data == nil {
+		return true
+	}
+
+	return false
 }
 
 // Process test process function
 func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugin.Metric, error) {
-	if p.Log == nil {
-		processLog, err := NewLogger("/tmp", "processor"+strconv.Itoa(os.Getpid()))
-		if err != nil {
-			return mts, errors.New("Error creating process logger: " + err.Error())
-		}
-		p.Log = processLog
-	}
-
-	log := p.Log.Logger
-
-	config, err := NewProcessorConfig(cfg, log)
+	config, err := NewProcessorConfig(cfg)
 	if err != nil {
 		return mts, errors.New("Unable to create processor config: " + err.Error())
 	}
 
 	metrics := []plugin.Metric{}
 	for _, mt := range mts {
+		metricNamespace := strings.Join(mt.Namespace.Strings(), "/")
+		if p.isSkipProcess(mt.Data) {
+			log.Errorf("Skipping average process for %s", metricNamespace)
+			continue
+		}
+
 		podNamespace, _ := mt.Tags["io.kubernetes.pod.namespace"]
-		if (config.IsEmptyNamespaceInclude && podNamespace == "") || inArray(podNamespace, config.ProcessNamespaces) {
-			if !isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), config.ExcludeKeywordsList) ||
-				isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), config.ExceptsList) {
-				if isKeywordMatch(strings.Join(mt.Namespace.Strings(), "/"), config.AverageList) {
-					mt.Data = p.CalculateAverageData(mt, log)
-				}
-				metrics = append(metrics, mt)
+		if p.isCollectNamespaces(config, metricNamespace, podNamespace) && p.isIncludMetricNamespaces(config, metricNamespace) {
+			if isKeywordMatch(metricNamespace, config.AverageList) {
+				mt.Data = p.CalculateAverageData(mt)
+				mt.Tags["average_process"] = "true"
 			}
+			metrics = append(metrics, mt)
 		}
 	}
-
-	log.Infof("Process filter metric size %d: ", len(metrics))
 
 	return metrics, nil
 }
@@ -209,30 +199,27 @@ func (p *SnapProcessor) GetConfigPolicy() (plugin.ConfigPolicy, error) {
 	return *policy, nil
 }
 
-func (p *SnapProcessor) CalculateAverageData(
-	mt plugin.Metric,
-	log *logging.Logger) float64 {
+func (p *SnapProcessor) CalculateAverageData(mt plugin.Metric) float64 {
 	namespaces := mt.Namespace.Strings()
 	mapKey := strings.Join(namespaces, "/")
 	averageData := float64(0)
 	previousData, ok := p.Cache[mapKey]
 	if ok {
-		log.Infof("Find %s previous cache metric value: %+v", mapKey, previousData)
+		log.Debugf("Find %s previous cache metric value: %+v", mapKey, previousData)
 		diffSeconds := mt.Timestamp.Sub(previousData.Create).Seconds()
 		diffValue := (convertInterface(mt.Data) - previousData.Data)
 		if diffSeconds > 0 && diffValue > 0 {
 			averageData = (convertInterface(mt.Data) - previousData.Data) / diffSeconds
-			log.Infof("Calculate %s averageData(%f) on %s", mapKey, averageData, mt.Timestamp)
+			log.Debugf("Calculate %s averageData(%f) on %s", mapKey, averageData, mt.Timestamp)
 		}
-	} else {
-		previousData := &PreviousData{}
-		p.Cache[mapKey] = previousData
 	}
 
-	previousData.Data = convertInterface(mt.Data)
-	previousData.Create = mt.Timestamp
+	p.Cache[mapKey] = &PreviousData{
+		Data:   convertInterface(mt.Data),
+		Create: mt.Timestamp,
+	}
 
-	log.Infof("Cache this time metric %s value: %+v", mapKey, previousData)
+	log.Debugf("Cache this time metric %s value: %+v", mapKey, previousData)
 	return averageData
 }
 
@@ -247,6 +234,11 @@ func isKeywordMatch(keyword string, patterns []glob.Glob) bool {
 }
 
 func convertInterface(data interface{}) float64 {
+	if data == nil {
+		log.Errorf("Data is empty : Type %T", data)
+		return float64(0)
+	}
+
 	switch data.(type) {
 	case int:
 		return float64(data.(int))

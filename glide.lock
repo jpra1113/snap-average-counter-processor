@@ -1,12 +1,10 @@
-hash: a6fac6a1cb9ce27ca9009c6847fd3e1d824f4f8be5a0e19148042d97932c4019
-updated: 2017-09-19T10:46:30.416172682+08:00
+hash: 2a46b1dd88d97543c8d0ad0516730619a76e0a441be7da95e651c69e632430eb
+updated: 2017-11-22T13:31:59.729324517+08:00
 imports:
 - name: github.com/aasssddd/snap-plugin-lib-go
   version: 5dc768651f85c2bc4ce7f57bf940ee6050a1adf9
   subpackages:
   - v1/plugin
-- name: github.com/go-resty/resty
-  version: c45c7bcc0000d1a9ac1b119b2e6043c6540eedea
 - name: github.com/gobwas/glob
   version: bea32b9cd2d6f55753d94a28e959b13f0244797a
   subpackages:
@@ -31,8 +29,6 @@ imports:
   - v1/plugin/rpc
 - name: github.com/julienschmidt/httprouter
   version: 8c199fb6259ffc1af525cc3ad52ee60ba8359669
-- name: github.com/op/go-logging
-  version: 970db520ece77730c7e4724c61121037378659d9
 - name: github.com/Sirupsen/logrus
   version: f006c2ac4710855cf0f916dd6b77acf6b048dc6e
 - name: github.com/urfave/cli
@@ -68,11 +64,14 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: f92cdcd7dcdc69e81b2d7b338479a19a8723cfa3
+  version: 5a9f7b402fe85096d2e1d0383435ee1876e863d0
   subpackages:
+  - balancer
+  - balancer/roundrobin
   - codes
   - connectivity
   - credentials
+  - encoding
   - grpclb/grpc_lb_v1/messages
   - grpclog
   - internal
@@ -80,6 +79,9 @@ imports:
   - metadata
   - naming
   - peer
+  - resolver
+  - resolver/dns
+  - resolver/passthrough
   - stats
   - status
   - tap
@@ -97,7 +99,7 @@ testImports:
   - internal/go-render/render
   - internal/oglematchers
 - name: github.com/smartystreets/goconvey
-  version: e5b2b7c9111590d019a696c7800593f666e1a7f4
+  version: 9e8dc3f972df6c8fcc0375ef492c24d0bb204857
   subpackages:
   - convey
   - convey/gotest
