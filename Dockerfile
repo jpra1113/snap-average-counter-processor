@@ -20,5 +20,4 @@ CMD /usr/local/bin/init_snap && /opt/snap/sbin/snapteld -t ${SNAP_TRUST_LEVEL} -
     snaptel plugin load /snap-plugin-collector-disk_linux_x86_64; \
     snaptel plugin load /snap-plugin-publisher-file_linux_x86_64; \
     snaptel task create -t /test-task.yaml; \
-    sleep 10; \
-    tail -f /tmp/log/processor.log
+    sleep 10;
