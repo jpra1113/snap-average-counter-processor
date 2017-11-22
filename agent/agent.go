@@ -129,7 +129,7 @@ func NewProcessor() plugin.Processor {
 	}
 }
 
-func (p *SnapProcessor) isCollectNamespaces(config *ProcessorConfig, metricNamespace string, podNamespace string) bool {
+func (p *SnapProcessor) isNamespacesCollected(config *ProcessorConfig, metricNamespace string, podNamespace string) bool {
 	emptyNamespace := podNamespace == ""
 	if config.IsEmptyNamespaceInclude && emptyNamespace {
 		return true
@@ -143,7 +143,7 @@ func (p *SnapProcessor) isCollectNamespaces(config *ProcessorConfig, metricNames
 	return needCollect
 }
 
-func (p *SnapProcessor) isIncludMetricNamespaces(config *ProcessorConfig, metricNamespace string) bool {
+func (p *SnapProcessor) isMetricNamespacesIncluded(config *ProcessorConfig, metricNamespace string) bool {
 	if !isKeywordMatch(metricNamespace, config.ExcludeKeywordsList) || isKeywordMatch(metricNamespace, config.ExceptsList) {
 		return true
 	}
@@ -152,7 +152,7 @@ func (p *SnapProcessor) isIncludMetricNamespaces(config *ProcessorConfig, metric
 	return false
 }
 
-func (p *SnapProcessor) isSkipProcess(data interface{}) bool {
+func (p *SnapProcessor) isDataNull(data interface{}) bool {
 	if data == nil {
 		return true
 	}
@@ -170,13 +170,13 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 	metrics := []plugin.Metric{}
 	for _, mt := range mts {
 		metricNamespace := strings.Join(mt.Namespace.Strings(), "/")
-		if p.isSkipProcess(mt.Data) {
+		if p.isDataNull(mt.Data) {
 			log.Errorf("Skipping average process for %s", metricNamespace)
 			continue
 		}
 
 		podNamespace, _ := mt.Tags["io.kubernetes.pod.namespace"]
-		if p.isCollectNamespaces(config, metricNamespace, podNamespace) && p.isIncludMetricNamespaces(config, metricNamespace) {
+		if p.isNamespacesCollected(config, metricNamespace, podNamespace) && p.isMetricNamespacesIncluded(config, metricNamespace) {
 			if isKeywordMatch(metricNamespace, config.AverageList) {
 				mt.Data = p.CalculateAverageData(mt)
 				mt.Tags["average_process"] = "true"
