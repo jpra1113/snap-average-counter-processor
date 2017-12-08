@@ -160,6 +160,16 @@ func (p *SnapProcessor) isDataNull(data interface{}) bool {
 	return false
 }
 
+func (p *SnapProcessor) isDataNeedAppend(mt plugin.Metric) bool {
+	if _, ok := mt.Tags["average_process"]; ok {
+		if convertInterface(mt.Data) == -1 {
+			return false
+		}
+	}
+
+	return true
+}
+
 // Process test process function
 func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugin.Metric, error) {
 	config, err := NewProcessorConfig(cfg)
@@ -181,7 +191,9 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 				mt.Data = p.CalculateAverageData(mt)
 				mt.Tags["average_process"] = "true"
 			}
-			metrics = append(metrics, mt)
+			if p.isDataNeedAppend(mt) {
+				metrics = append(metrics, mt)
+			}
 		}
 	}
 
@@ -202,15 +214,22 @@ func (p *SnapProcessor) GetConfigPolicy() (plugin.ConfigPolicy, error) {
 func (p *SnapProcessor) CalculateAverageData(mt plugin.Metric) float64 {
 	namespaces := mt.Namespace.Strings()
 	mapKey := strings.Join(namespaces, "/")
+	if nodename, ok := mt.Tags["nodename"]; ok {
+		mapKey = mapKey + "/" + nodename
+	}
 	averageData := float64(0)
 	previousData, ok := p.Cache[mapKey]
 	if ok {
-		log.Debugf("Find %s previous cache metric value: %+v", mapKey, previousData)
+		log.Infof("Find %s previous cache metric value: %+v", mapKey, previousData)
 		diffSeconds := mt.Timestamp.Sub(previousData.Create).Seconds()
+		// The two points are too close together
+		if diffSeconds < 1 {
+			return -1
+		}
 		diffValue := (convertInterface(mt.Data) - previousData.Data)
-		if diffSeconds > 0 && diffValue > 0 {
+		if diffValue >= 0 {
 			averageData = (convertInterface(mt.Data) - previousData.Data) / diffSeconds
-			log.Debugf("Calculate %s averageData(%f) on %s", mapKey, averageData, mt.Timestamp)
+			log.Infof("Calculate %s averageData(%f) on %s", mapKey, averageData, mt.Timestamp)
 		}
 	} else {
 		previousData = &PreviousData{}
@@ -220,7 +239,7 @@ func (p *SnapProcessor) CalculateAverageData(mt plugin.Metric) float64 {
 	previousData.Data = convertInterface(mt.Data)
 	previousData.Create = mt.Timestamp
 
-	log.Debugf("Cache this time metric %s value: %+v", mapKey, previousData)
+	log.Infof("Cache this time metric %s value: %+v", mapKey, previousData)
 	return averageData
 }
 
