@@ -160,6 +160,17 @@ func (p *SnapProcessor) isDataNull(data interface{}) bool {
 	return false
 }
 
+func (p *SnapProcessor) getCacheKey(mt plugin.Metric) string {
+	namespaces := mt.Namespace.Strings()
+	cacheKey := strings.Join(namespaces, "/")
+	isContainerNamespaces := strings.HasPrefix(cacheKey, "intel/docker/")
+	if nodename, ok := mt.Tags["nodename"]; ok && !isContainerNamespaces {
+		cacheKey = cacheKey + "/" + nodename
+	}
+
+	return cacheKey
+}
+
 // Process test process function
 func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugin.Metric, error) {
 	config, err := NewProcessorConfig(cfg)
@@ -200,27 +211,26 @@ func (p *SnapProcessor) GetConfigPolicy() (plugin.ConfigPolicy, error) {
 }
 
 func (p *SnapProcessor) CalculateAverageData(mt plugin.Metric) float64 {
-	namespaces := mt.Namespace.Strings()
-	mapKey := strings.Join(namespaces, "/")
+	cacheKey := p.getCacheKey(mt)
 	averageData := float64(0)
-	previousData, ok := p.Cache[mapKey]
+	previousData, ok := p.Cache[cacheKey]
 	if ok {
-		log.Debugf("Find %s previous cache metric value: %+v", mapKey, previousData)
+		log.Infof("Find %s previous cache metric value: %+v", cacheKey, previousData)
 		diffSeconds := mt.Timestamp.Sub(previousData.Create).Seconds()
 		diffValue := (convertInterface(mt.Data) - previousData.Data)
 		if diffSeconds > 0 && diffValue > 0 {
 			averageData = (convertInterface(mt.Data) - previousData.Data) / diffSeconds
-			log.Debugf("Calculate %s averageData(%f) on %s", mapKey, averageData, mt.Timestamp)
+			log.Infof("Calculate %s averageData(%f) on %s", cacheKey, averageData, mt.Timestamp)
 		}
 	} else {
 		previousData = &PreviousData{}
-		p.Cache[mapKey] = previousData
+		p.Cache[cacheKey] = previousData
 	}
 
 	previousData.Data = convertInterface(mt.Data)
 	previousData.Create = mt.Timestamp
 
-	log.Debugf("Cache this time metric %s value: %+v", mapKey, previousData)
+	log.Infof("Cache this time metric %s value: %+v", cacheKey, previousData)
 	return averageData
 }
 
