@@ -160,15 +160,20 @@ func (p *SnapProcessor) isDataNull(data interface{}) bool {
 	return false
 }
 
-func (p *SnapProcessor) getCacheKey(mt plugin.Metric) string {
+func (p *SnapProcessor) getCacheKey(mt plugin.Metric) (string, error) {
 	namespaces := mt.Namespace.Strings()
 	cacheKey := strings.Join(namespaces, "/")
-	isContainerNamespaces := strings.HasPrefix(cacheKey, "intel/docker/")
-	if nodename, ok := mt.Tags["nodename"]; ok && !isContainerNamespaces {
+	if strings.HasPrefix(cacheKey, "intel/docker/") {
+		dockerId, ok := mt.Tags["docker_id"]
+		if !ok {
+			return "", fmt.Errorf("docker_id tag not found in docker metric tags: %+v", mt.Tags)
+		}
+		cacheKey = cacheKey + "/" + dockerId
+	} else if nodename, ok := mt.Tags["nodename"]; ok {
 		cacheKey = cacheKey + "/" + nodename
 	}
 
-	return cacheKey
+	return cacheKey, nil
 }
 
 // Process test process function
@@ -189,7 +194,11 @@ func (p *SnapProcessor) Process(mts []plugin.Metric, cfg plugin.Config) ([]plugi
 		podNamespace, _ := mt.Tags["io.kubernetes.pod.namespace"]
 		if p.isNamespacesCollected(config, metricNamespace, podNamespace) && p.isMetricNamespacesIncluded(config, metricNamespace) {
 			if isKeywordMatch(metricNamespace, config.AverageList) {
-				mt.Data = p.CalculateAverageData(mt)
+				data, err := p.CalculateAverageData(mt)
+				if err != nil {
+					return metrics, errors.New("Unable to calculate average data: " + err.Error())
+				}
+				mt.Data = data
 				mt.Tags["average_process"] = "true"
 			}
 			metrics = append(metrics, mt)
@@ -210,8 +219,11 @@ func (p *SnapProcessor) GetConfigPolicy() (plugin.ConfigPolicy, error) {
 	return *policy, nil
 }
 
-func (p *SnapProcessor) CalculateAverageData(mt plugin.Metric) float64 {
-	cacheKey := p.getCacheKey(mt)
+func (p *SnapProcessor) CalculateAverageData(mt plugin.Metric) (float64, error) {
+	cacheKey, err := p.getCacheKey(mt)
+	if err != nil {
+		return float64(0), errors.New("Unable to get cache key: " + err.Error())
+	}
 	averageData := float64(0)
 	previousData, ok := p.Cache[cacheKey]
 	if ok {
@@ -231,7 +243,7 @@ func (p *SnapProcessor) CalculateAverageData(mt plugin.Metric) float64 {
 	previousData.Create = mt.Timestamp
 
 	log.Infof("Cache this time metric %s value: %+v", cacheKey, previousData)
-	return averageData
+	return averageData, nil
 }
 
 func isKeywordMatch(keyword string, patterns []glob.Glob) bool {
