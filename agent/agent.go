@@ -163,7 +163,7 @@ func (p *SnapProcessor) isDataNull(data interface{}) bool {
 func (p *SnapProcessor) getCacheKey(mt plugin.Metric) string {
 	namespaces := mt.Namespace.Strings()
 	cacheKey := strings.Join(namespaces, "/")
-	isContainerNamespaces := strings.HasPrefix(cacheKey, "/intel/docker/")
+	isContainerNamespaces := strings.HasPrefix(cacheKey, "intel/docker/")
 	if nodename, ok := mt.Tags["nodename"]; ok && !isContainerNamespaces {
 		cacheKey = cacheKey + "/" + nodename
 	}
