@@ -166,8 +166,10 @@ func (p *SnapProcessor) getCacheKey(mt plugin.Metric) (string, error) {
 	if strings.HasPrefix(cacheKey, "intel/docker/") {
 		dockerId, ok := mt.Tags["docker_id"]
 		if !ok {
-			return "", fmt.Errorf("docker_id tag not found in docker metric tags: %+v", mt.Tags)
+			log.Warningf("docker_id tag not found in docker metric tags from %s: %+v", cacheKey, mt.Tags)
+			dockerId = namespaces[2]
 		}
+
 		cacheKey = cacheKey + "/" + dockerId
 	} else if nodename, ok := mt.Tags["nodename"]; ok {
 		cacheKey = cacheKey + "/" + nodename
