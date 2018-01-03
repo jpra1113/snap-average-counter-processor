@@ -1,11 +1,22 @@
 package: github.com/hyperpilotio/snap-average-counter-processor
 import:
 - package: github.com/Sirupsen/logrus
-- package: github.com/aasssddd/snap-plugin-lib-go
+- package: github.com/jpra1113/snap-plugin-lib-go
   subpackages:
   - v1/plugin
 - package: github.com/gobwas/glob
+- package: golang.org/x/net
+  version: 054b33e6527139ad5b1ec2f6232c3b175bd9a30c
+  subpackages:
+  - context
+  - http2
+  - http2/hpack
+  - idna
+  - internal/timeseries
+  - lex/httplex
+  - trace
 - package: google.golang.org/grpc
+  version: ^v1.4
 testImport:
 - package: github.com/smartystreets/goconvey
   subpackages:

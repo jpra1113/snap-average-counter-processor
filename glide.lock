@@ -1,10 +1,6 @@
-hash: 2a46b1dd88d97543c8d0ad0516730619a76e0a441be7da95e651c69e632430eb
-updated: 2017-11-22T13:31:59.729324517+08:00
+hash: 52a1f7762522d06aa20db5ce16425af49650ddb2102a9b55af6f4a8f8db9497a
+updated: 2018-01-03T14:14:21.223399052+08:00
 imports:
-- name: github.com/aasssddd/snap-plugin-lib-go
-  version: 5dc768651f85c2bc4ce7f57bf940ee6050a1adf9
-  subpackages:
-  - v1/plugin
 - name: github.com/gobwas/glob
   version: bea32b9cd2d6f55753d94a28e959b13f0244797a
   subpackages:
@@ -23,14 +19,15 @@ imports:
   - ptypes/any
   - ptypes/duration
   - ptypes/timestamp
-- name: github.com/intelsdi-x/snap-plugin-lib-go
-  version: 39befbe4b489623fce1e809048eea52644f5cfea
+- name: github.com/jpra1113/snap-plugin-lib-go
+  version: e2d57f12f4a6b5d0f10b36b01f2acf8a040a84fc
   subpackages:
+  - v1/plugin
   - v1/plugin/rpc
 - name: github.com/julienschmidt/httprouter
   version: 8c199fb6259ffc1af525cc3ad52ee60ba8359669
 - name: github.com/Sirupsen/logrus
-  version: f006c2ac4710855cf0f916dd6b77acf6b048dc6e
+  version: d682213848ed68c0a260ca37d6dd5ace8423f5ba
 - name: github.com/urfave/cli
   version: cfb38830724cc34fedffe9a2a29fb54fa9169cd1
 - name: golang.org/x/crypto
@@ -38,7 +35,7 @@ imports:
   subpackages:
   - ssh/terminal
 - name: golang.org/x/net
-  version: 8351a756f30f1297fe94bbf4b767ec589c6ea6d0
+  version: 054b33e6527139ad5b1ec2f6232c3b175bd9a30c
   subpackages:
   - context
   - http2
@@ -48,7 +45,7 @@ imports:
   - lex/httplex
   - trace
 - name: golang.org/x/sys
-  version: 062cd7e4e68206d8bab9b18396626e855c992658
+  version: c8bc69bc2db9c57ccf979550bc69655df5039a8a
   subpackages:
   - unix
   - windows
@@ -64,9 +61,10 @@ imports:
   subpackages:
   - googleapis/rpc/status
 - name: google.golang.org/grpc
-  version: 5a9f7b402fe85096d2e1d0383435ee1876e863d0
+  version: f3955b8e9e244dd4dd4bc4f7b7a23a8445400a76
   subpackages:
   - balancer
+  - balancer/base
   - balancer/roundrobin
   - codes
   - connectivity

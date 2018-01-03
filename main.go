@@ -20,8 +20,8 @@ limitations under the License.
 package main
 
 import (
-	"github.com/aasssddd/snap-plugin-lib-go/v1/plugin"
 	"github.com/hyperpilotio/snap-average-counter-processor/agent"
+	"github.com/jpra1113/snap-plugin-lib-go/v1/plugin"
 	"google.golang.org/grpc"
 )
 
